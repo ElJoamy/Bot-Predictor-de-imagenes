@@ -98,10 +98,9 @@ def filter_predictions(prediction: Detection, labels_to_find: List[str]) -> Dete
             filtered_labels.append(label)
             filtered_confidences.append(confidence)
 
-    # Asegúrate de incluir todos los campos requeridos en la nueva instancia de Detection
     return Detection(
-        pred_type=prediction.pred_type,  # Reutiliza el tipo de predicción original
-        n_detections=len(filtered_boxes),  # Actualiza el número de detecciones
+        pred_type=prediction.pred_type,
+        n_detections=len(filtered_boxes),
         boxes=filtered_boxes, 
         labels=filtered_labels, 
         confidences=filtered_confidences
@@ -167,12 +166,10 @@ def download_report() -> Response:
 async def choose_predict(
     file: UploadFile = File(...), 
     threshold: float = 0.5,
-    labels: List[str] = [],  # Lista de etiquetas que el usuario desea encontrar
+    labels: List[str] = [],
     predictor: ObjectDetector = Depends(get_object_detector)
 ) -> Response:
     results, img = predict_uploadfile(predictor, file, threshold)
-    
-    # Filtrar los resultados para incluir solo las etiquetas deseadas
     filtered_results = filter_predictions(results, labels)
 
     if not filtered_results.boxes:
@@ -182,7 +179,6 @@ async def choose_predict(
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_prediction_to_csv(file.filename, filtered_results, timestamp)
     return Response(content=annotated_img_stream.read(), media_type="image/jpeg")
-
 
 if __name__ == "__main__":
     import uvicorn
