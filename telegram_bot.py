@@ -1,36 +1,30 @@
-import telebot
+import base64
 import csv
 import os
 import requests
 from datetime import datetime
 from config import get_settings
 from io import BytesIO
+from telebot import telebot, types
 
-
-# Configuración del bot
 API_TOKEN = get_settings().telegram_token
 
 bot = telebot.TeleBot(API_TOKEN)
 
-# Archivo CSV para guardar los datos
 log_file = "user_log.csv"
 
-# URL de tu API de FastAPI
 API_URL = get_settings().api_url
 
 
 def log_user_data(user_id, user_name, command_time, comando):
-    # Verifica si el archivo existe y si necesita encabezados
     file_exists = os.path.isfile(log_file)
     
     with open(log_file, mode='a', newline='') as file:
         writer = csv.writer(file)
 
-        # Si el archivo no existe, escribe los encabezados
         if not file_exists:
             writer.writerow(["User ID", "Username", "Command Time", "Date", "Command"])
 
-        # Escribe los detalles del usuario
         writer.writerow([user_id, user_name, command_time.strftime("%H:%M:%S"), command_time.strftime("%Y-%m-%d"), comando])
 
 
@@ -39,13 +33,31 @@ def get_user_ids_from_log():
     try:
         with open(log_file, mode='r') as file:
             reader = csv.reader(file)
-            next(reader, None)  # Saltar el encabezado
+            next(reader, None) 
             for row in reader:
-                if row:  # Asegúrate de que la fila no esté vacía
-                    user_ids.add(int(row[0]))  # Asume que el ID de usuario está en la primera columna
+                if row:
+                    user_ids.add(int(row[0])) 
     except FileNotFoundError:
         print("Archivo de log no encontrado.")
     return user_ids
+
+def generate_markup():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+
+    # Creando botones para cada comando
+    start_button = types.KeyboardButton('/start')
+    help_button = types.KeyboardButton('/help')
+    status_button = types.KeyboardButton('/status')
+    predict_button = types.KeyboardButton('/predict')
+    choose_button = types.KeyboardButton('/choose')
+    reports_button = types.KeyboardButton('/reports')
+
+    # Añadiendo botones al teclado
+    markup.row(start_button, help_button)
+    markup.row(status_button, predict_button)
+    markup.row(choose_button, reports_button)
+
+    return markup
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -53,12 +65,10 @@ def handle_start(message):
     user_name = message.from_user.username
     command_time = datetime.now()
     comando = message.text
-
-    # Guardar los datos del usuario
     log_user_data(user_id, user_name, command_time, comando)
 
-    # Enviar mensaje de bienvenida
-    bot.reply_to(message, f"Hola {user_name}, bienvenido al bot Object Detection API! Usa el comando /help para ver los comandos disponibles.")
+    markup= generate_markup()
+    bot.reply_to(message, f"Hola {user_name}, bienvenido al bot Object Detection API! Usa el comando /help para ver los comandos disponibles.", reply_markup=markup)
     print (f"El {user_name} con ID {user_id} hizo el comando {comando} a las {command_time.strftime('%H:%M:%S')}")
 
 @bot.message_handler(commands=['help'])
@@ -75,7 +85,11 @@ def handle_help(message):
                    f"/status - Obtener el estado del servicio\n" \
                    f"/predict - Enviar una imagen para predecir\n" \
                    f"/choose - Elegir las etiquetas que deseas detectar\n" \
-                   f"/reports - Obtener el reporte de predicciones\n"
+                   f"/reports - Obtener el reporte de predicciones\n" \
+                   f"Tambien tienes en tu teclado los comandos disponibles a lado del clip de archivos.\n" \
+                   f"Para más información, visita el repositorio del proyecto: https://github.com/ElJoamy/Bot-Predictor-de-imagenes.git \n" \
+                   f"Si tienes mas dudas puedes revisar el {API_URL}docs"
+                   
     bot.reply_to(message, help_message)
     print (f"El {user_name} con ID {user_id} hizo el comando {comando} a las {command_time.strftime('%H:%M:%S')}")
 
@@ -93,7 +107,7 @@ def handle_status(message):
     command_time = datetime.now()
     comando = message.text
     log_user_data(user_id, user_name, command_time, comando)
-    status_url = API_URL + "status"  # Aquí concatenas /status a la URL base
+    status_url = API_URL + "status"
     try:
         response = requests.get(status_url)
         if response.status_code == 200:
@@ -110,7 +124,7 @@ def handle_status(message):
     print (f"El {user_name} con ID {user_id} hizo el comando {comando} a las {command_time.strftime('%H:%M:%S')}")
     bot.reply_to(message, reply_message)
 
-users_waiting_for_images = {}  # Define the dictionary
+users_waiting_for_images = {}
 user_state = {}
 
 @bot.message_handler(commands=['predict'])
@@ -133,26 +147,44 @@ def handle_photo(message):
     comando = message.text
     log_user_data(user_id, user_name, command_time, comando)
     if users_waiting_for_images.get(message.from_user.id):
-        del users_waiting_for_images[message.from_user.id]  # Eliminar el estado de espera
+        del users_waiting_for_images[message.from_user.id]
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
         downloaded_file = bot.download_file(file_info.file_path)
 
         print(f'Archivo descargado: {file_info.file_path}')
-
-        # Preparar los datos para enviar a la API
+        bot.send_message(chat_id=message.chat.id, text="Procesando imagen...")
+        contador = 0
         image_stream = BytesIO(downloaded_file)
-        image_stream.name = 'image.jpg'  # Establecer un nombre de archivo
+        image_stream.name = f'image{contador}.jpg'
+
+        while os.path.exists(image_stream.name):
+            contador += 1
+            image_stream.name = f'image{contador}.jpg'
 
         files = {'file': (image_stream.name, image_stream, 'image/jpeg')}
-        data = {'threshold': 0.5}  # Ajustar según sea necesario
+        data = {'threshold': 0.5}
+        # response = requests.post(API_URL + 'predict', files=files, data=data)
+        # if response.status_code == 200:
+        #     bot.send_photo(chat_id=message.chat.id, photo=BytesIO(response.content), caption=f'Imagen procesada.')
+        #     print("Imagen enviada.")
+        # else:
+        #     bot.send_message(chat_id=message.chat.id, text="Error al procesar la imagen.")
         response = requests.post(API_URL + 'predict', files=files, data=data)
-        bot.send_message(chat_id=message.chat.id, text="Procesando imagen...")
         if response.status_code == 200:
-            bot.send_photo(chat_id=message.chat.id, photo=BytesIO(response.content), caption="Imagen procesada.")
-            print("Imagen enviada.")
+            response_data = response.json()
+            image_base64 = response_data["image"]
+            detections = response_data["detections"]
+
+            # Crear el mensaje de detección
+            detection_message = ", ".join([f"{det['label']}: {det['confidence']:.2f}" for det in detections])
+            
+            # Decodificar y enviar la imagen
+            img_data = base64.b64decode(image_base64)
+            bot.send_photo(chat_id=message.chat.id, photo=img_data, caption=detection_message)
         else:
             bot.send_message(chat_id=message.chat.id, text="Error al procesar la imagen.")
+
     else:
         bot.send_message(chat_id=message.chat.id, text="Primero usa el comando /predict.")
     del user_state[user_id]

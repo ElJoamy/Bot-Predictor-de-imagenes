@@ -1,3 +1,4 @@
+import base64
 import io
 import cv2
 import os
@@ -10,9 +11,10 @@ from fastapi import (
     File, 
     HTTPException, 
     status,
-    Depends
+    Depends,
+    Request
 )
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from datetime import datetime
 from PIL import Image
 from detector import ObjectDetector, Detection
@@ -21,15 +23,19 @@ from functools import cache
 from fastapi.responses import FileResponse
 from threading import Thread
 from typing import List
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 
 
 SETTINGS = get_settings()
 
 app = FastAPI(title=SETTINGS.api_name, version=SETTINGS.revision)
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
 object_detector = ObjectDetector()
 
 log_file = "predictions_log.csv"
+templates = Jinja2Templates(directory="templates")
 
 def start_telegram_bot():
     telegram_bot.bot.polling(none_stop=True)
@@ -113,10 +119,15 @@ def log_prediction_to_csv(image_name, prediction, timestamp):
         writer = csv.writer(file)
 
         if not file_exists:
-            writer.writerow(["Image Name", "Timestamp", "Label", "Confidence", "Box (x1, y1, x2, y2)"])
+            writer.writerow(["Image_Name", "Timestamp", "Label", "Confidence", "Box (x1, y1, x2, y2)"])
 
         for box, label, confidence in zip(prediction.boxes, prediction.labels, prediction.confidences):
             writer.writerow([image_name, timestamp, label, confidence, *box])
+
+@app.get("/")
+def get_root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
 
 @app.get("/status")
 def get_status():
@@ -138,6 +149,18 @@ def detect_objects(
     
     return results
 
+# @app.post("/predict")
+# async def predict(
+#     file: UploadFile = File(...), 
+#     threshold: float = 0.5,
+#     predictor: ObjectDetector = Depends(get_object_detector)
+# ) -> Response:
+#     results, img = predict_uploadfile(predictor, file, threshold)
+#     annotated_img_stream = annotate_image(img, results)
+#     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#     log_prediction_to_csv(file.filename, results, timestamp)
+#     prediction_info=log_prediction_to_csv(file.filename, results, timestamp)
+#     return Response(content=annotated_img_stream.read(), media_type="image/jpeg", headers={"prediction_info": prediction_info})
 @app.post("/predict")
 async def predict(
     file: UploadFile = File(...), 
@@ -148,7 +171,17 @@ async def predict(
     annotated_img_stream = annotate_image(img, results)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_prediction_to_csv(file.filename, results, timestamp)
-    return Response(content=annotated_img_stream.read(), media_type="image/jpeg")
+
+    img_base64 = base64.b64encode(annotated_img_stream.getvalue()).decode("utf-8")
+    
+    detections = [
+        {"label": label, "confidence": conf} 
+        for label, conf in zip(results.labels, results.confidences)
+    ]
+
+    return JSONResponse(content={"image": img_base64, "detections": detections})
+
+
 
 @app.get("/reports", responses={200: {"content": {"text/csv": {}}}})
 def download_report() -> Response:
