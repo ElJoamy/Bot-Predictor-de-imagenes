@@ -13,6 +13,7 @@ Codigo: 55669
   - [Configuración](#configuración)
   - [Uso](#uso)
     - [Comandos del Bot](#comandos-del-bot)
+  - [Demostración](#demostración)
   - [Autores](#autores)
   - [Licencia](#licencia)
 
