@@ -16,7 +16,7 @@ bot = telebot.TeleBot(API_TOKEN)
 log_file = "user_log.csv"
 
 # URL de tu API de FastAPI
-API_URL = "http://127.0.0.1:8000/"  # Reemplaza <tu_dominio> con la URL correcta
+API_URL = get_settings().api_url
 
 
 def log_user_data(user_id, user_name, command_time, comando):
@@ -58,7 +58,7 @@ def handle_start(message):
     log_user_data(user_id, user_name, command_time, comando)
 
     # Enviar mensaje de bienvenida
-    bot.reply_to(message, f"Hola {user_name}, bienvenido al bot Object Detection API!")
+    bot.reply_to(message, f"Hola {user_name}, bienvenido al bot Object Detection API! Usa el comando /help para ver los comandos disponibles.")
     print (f"El {user_name} con ID {user_id} hizo el comando {comando} a las {command_time.strftime('%H:%M:%S')}")
 
 @bot.message_handler(commands=['help'])
@@ -74,7 +74,8 @@ def handle_help(message):
                    f"/help - Mostrar este mensaje de ayuda\n" \
                    f"/status - Obtener el estado del servicio\n" \
                    f"/predict - Enviar una imagen para predecir\n" \
-                   f"/reports - Obtener el reporte de predicciones"
+                   f"/choose - Elegir las etiquetas que deseas detectar\n" \
+                   f"/reports - Obtener el reporte de predicciones\n"
     bot.reply_to(message, help_message)
     print (f"El {user_name} con ID {user_id} hizo el comando {comando} a las {command_time.strftime('%H:%M:%S')}")
 
