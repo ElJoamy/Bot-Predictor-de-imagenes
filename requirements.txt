@@ -1,0 +1,7 @@
+fastapi
+opencv-python-headless
+pyTelegramBotAPI
+numpy
+Pillow
+pydantic
+requests
