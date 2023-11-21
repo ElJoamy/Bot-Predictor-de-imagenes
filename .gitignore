@@ -13,6 +13,3 @@ __pycache__/
 
 # csv
 *.csv
-
-# .pt
-*.pt
